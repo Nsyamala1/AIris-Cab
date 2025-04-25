@@ -235,3 +235,7 @@ async def autocomplete_cities(query: str = Query(None)):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/deploy")
+async def deploy():
+    return {"status": "deployed"}
