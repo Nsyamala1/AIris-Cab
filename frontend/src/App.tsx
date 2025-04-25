@@ -25,6 +25,7 @@ import {
   AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { API_URL } from './config';
 import FlightComparison from './components/FlightComparison';
 
 interface PriceEstimate {
@@ -85,7 +86,7 @@ function App() {
         return;
       }
 
-      await axios.post('http://localhost:8000/track-route', {
+      await axios.post(`${API_URL}/track-route`, {
         pickup_address: estimate.pickup,
         dropoff_address: estimate.dropoff,
         passenger_count: passengerCount,
@@ -116,7 +117,7 @@ function App() {
     try {
       // Make sure the phone number starts with + for E.164 format
       const formattedNumber = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
-      const response = await axios.get(`http://localhost:8000/tracked-routes/${encodeURIComponent(formattedNumber)}`);
+      const response = await axios.get(`${API_URL}/tracked-routes/${encodeURIComponent(formattedNumber)}`);
       setTrackedRoutes(response.data);
     } catch (error) {
       console.error('Failed to fetch tracked routes:', error);
@@ -130,7 +131,7 @@ function App() {
 
   const deleteTrackedRoute = async (routeId: number) => {
     try {
-      await axios.delete(`http://localhost:8000/tracked-routes/${routeId}`);
+      await axios.delete(`${API_URL}/tracked-routes/${routeId}`);
       setSnackbar({
         open: true,
         message: 'Route tracking stopped and deleted',

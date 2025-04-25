@@ -25,6 +25,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import axios from 'axios';
+import { API_URL } from '../config';
 
 interface FlightEstimate {
   airline: string;
@@ -88,7 +89,7 @@ export default function FlightComparison() {
   const handleCitySearch = async (query: string, type: 'origin' | 'destination'): Promise<void> => {
     if (query.length >= 2) {
       try {
-        const response = await axios.get(`http://localhost:8000/cities/autocomplete?query=${query}`);
+        const response = await axios.get(`${API_URL}/cities/autocomplete?query=${query}`);
         setCityOptions(response.data);
       } catch (error) {
         console.error('Failed to fetch city suggestions:', error);
