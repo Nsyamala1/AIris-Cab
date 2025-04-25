@@ -7,7 +7,7 @@ A real-time cab price comparison application that fetches prices from various ri
 - Real-time price comparison between ride-sharing services
 - Address to coordinates conversion using Google Maps API
 - AI-powered chat interface for assistance
-- Modern, responsive UI built with React and Chakra UI
+- Modern, responsive UI built with React and Material UI
 
 ## Prerequisites
 
