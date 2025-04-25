@@ -176,7 +176,7 @@ function App() {
     }
     setLoading(true);
     try {
-      const response = await axios.post('http://localhost:8000/compare-prices', {
+      const response = await axios.post('http://localhost:8001/compare-prices', {
         pickup_address: pickup,
         dropoff_address: dropoff,
         passenger_count: passengerCount
@@ -228,7 +228,7 @@ function App() {
               setPickup(newValue);
               if (newValue.length >= 1) {
                 try {
-                  const response = await axios.get(`http://localhost:8000/cities/autocomplete?query=${newValue}`);
+                  const response = await axios.get(`http://localhost:8001/cities/autocomplete?query=${newValue}`);
                   setPickupOptions(response.data);
                 } catch (error) {
                   console.error('Failed to fetch city suggestions:', error);
@@ -257,7 +257,7 @@ function App() {
               setDropoff(newValue);
               if (newValue.length >= 1) {
                 try {
-                  const response = await axios.get(`http://localhost:8000/cities/autocomplete?query=${newValue}`);
+                  const response = await axios.get(`http://localhost:8001/cities/autocomplete?query=${newValue}`);
                   setDropoffOptions(response.data);
                 } catch (error) {
                   console.error('Failed to fetch city suggestions:', error);

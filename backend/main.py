@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from price_tracker import check_price_and_notify
 from utils import calculate_price, get_mock_distance
 import random
 from datetime import datetime
+import traceback
 
 app = FastAPI()
 
@@ -82,7 +84,8 @@ def get_service_urls(service: str, pickup: str, dropoff: str) -> dict:
     return {"app_url": "", "web_url": ""}
 
 @app.post("/compare-prices")
-async def compare_prices(location: LocationRequest):
+async def compare_prices(location: LocationRequest, request: Request):
+    print(f"Received compare-prices request: {location}")
     try:
         # Get mock distance and duration
         route_data = get_mock_distance(location.pickup_address, location.dropoff_address)
@@ -159,7 +162,18 @@ async def compare_prices(location: LocationRequest):
         estimates = available_services
         return estimates
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in compare-prices: {e}")
+        print("Request body:", location)
+        print("Traceback:")
+        print(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "type": str(type(e).__name__),
+                "message": str(e)
+            }
+        )
 
 @app.post("/track-route")
 async def track_route(request: TrackRouteRequest, db: Session = Depends(get_db)):
@@ -185,7 +199,18 @@ async def track_route(request: TrackRouteRequest, db: Session = Depends(get_db))
         
         return {"message": "Route tracking started", "route_id": route.id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in compare-prices: {e}")
+        print("Request body:", location)
+        print("Traceback:")
+        print(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "type": str(type(e).__name__),
+                "message": str(e)
+            }
+        )
 
 @app.get("/tracked-routes/{phone_number}")
 async def get_tracked_routes(phone_number: str, db: Session = Depends(get_db)):
@@ -202,7 +227,18 @@ async def get_tracked_routes(phone_number: str, db: Session = Depends(get_db)):
     except HTTPException as he:
         raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in compare-prices: {e}")
+        print("Request body:", location)
+        print("Traceback:")
+        print(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "type": str(type(e).__name__),
+                "message": str(e)
+            }
+        )
 
 @app.delete("/tracked-routes/{route_id}")
 async def delete_tracked_route(route_id: int, db: Session = Depends(get_db)):
@@ -221,7 +257,18 @@ async def delete_tracked_route(route_id: int, db: Session = Depends(get_db)):
         
         return {"message": "Route tracking stopped and deleted"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in compare-prices: {e}")
+        print("Request body:", location)
+        print("Traceback:")
+        print(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "type": str(type(e).__name__),
+                "message": str(e)
+            }
+        )
 
 @app.get("/cities/autocomplete")
 async def autocomplete_cities(query: str = Query(None)):
