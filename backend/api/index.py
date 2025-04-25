@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
+from mangum import Mangum
 
 # Add the parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,3 +22,6 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {"message": "Welcome to AIris-Cab API"}
+
+# Create handler for AWS Lambda
+handler = Mangum(app)

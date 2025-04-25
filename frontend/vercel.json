@@ -1,35 +1,11 @@
 {
-    "version": 2,
-    "builds": [
+    "rewrites": [
         {
-            "src": "package.json",
-            "use": "@vercel/static-build",
-            "config": {
-                "buildCommand": "npm run build",
-                "outputDirectory": "build"
-            }
+            "source": "/(.*)",
+            "destination": "/index.html"
         }
     ],
-    "routes": [
-        {
-            "src": "/static/(.*)",
-            "dest": "/static/$1"
-        },
-        {
-            "src": "/favicon.ico",
-            "dest": "/favicon.ico"
-        },
-        {
-            "src": "/manifest.json",
-            "dest": "/manifest.json"
-        },
-        {
-            "src": "/robots.txt",
-            "dest": "/robots.txt"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/index.html"
-        }
-    ]
+    "buildCommand": "npm run build",
+    "outputDirectory": "build",
+    "framework": "create-react-app"
 }
