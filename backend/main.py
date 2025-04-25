@@ -14,7 +14,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "https://*.vercel.app", "https://*.now.sh"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -235,6 +235,10 @@ async def autocomplete_cities(query: str = Query(None)):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to AIris-Cab API"}
 
 @app.get("/deploy")
 async def deploy():
