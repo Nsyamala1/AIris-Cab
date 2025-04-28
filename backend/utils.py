@@ -1,38 +1,92 @@
-import random
+import os
+import googlemaps
+from datetime import datetime
+from typing import Dict, Any
+from dotenv import load_dotenv
 
-def calculate_price(distance: float, service_type: str) -> float:
-    # Base prices for different service types
+# Load environment variables
+load_dotenv()
+
+# Initialize Google Maps client
+gmaps = googlemaps.Client(key=os.getenv('GOOGLE_MAPS_API_KEY'))
+
+def get_distance_matrix(pickup: str, dropoff: str) -> Dict[str, Any]:
+    """Get distance and duration between two locations using Google Maps API."""
+    try:
+        # Request distance matrix from Google Maps
+        result = gmaps.distance_matrix(
+            origins=[pickup],
+            destinations=[dropoff],
+            mode="driving",
+            departure_time=datetime.now()
+        )
+
+        if result['status'] != 'OK':
+            raise Exception(f"Google Maps API error: {result['status']}")
+
+        # Extract distance and duration from response
+        element = result['rows'][0]['elements'][0]
+        if element['status'] != 'OK':
+            raise Exception(f"Route calculation error: {element['status']}")
+
+        return {
+            "distance": element['distance']['value'] / 1609.34,  # Convert meters to miles
+            "duration": element['duration']['value'],  # Duration in seconds
+            "duration_in_traffic": element.get('duration_in_traffic', {}).get('value', element['duration']['value'])
+        }
+    except Exception as e:
+        print(f"Error getting distance matrix: {str(e)}")
+        raise
+
+def calculate_price(distance: float, duration: int, service_type: str) -> float:
+    """Calculate ride price based on distance, duration, and service type."""
+    # Service-specific rates
     service_rates = {
-        "UberXL": {"base": 3.50, "per_mile": 2.50},
-        "Uber": {"base": 2.00, "per_mile": 1.50},
-        "Lyft": {"base": 2.50, "per_mile": 1.75},
-        "Bike": {"base": 1.00, "per_mile": 0.75}
+        "UberXL": {
+            "base_fare": 3.00,
+            "cost_per_mile": 2.00,
+            "cost_per_minute": 0.35,
+            "booking_fee": 2.50
+        },
+        "Uber": {
+            "base_fare": 2.00,
+            "cost_per_mile": 1.50,
+            "cost_per_minute": 0.25,
+            "booking_fee": 2.00
+        },
+        "Lyft": {
+            "base_fare": 2.00,
+            "cost_per_mile": 1.50,
+            "cost_per_minute": 0.25,
+            "booking_fee": 2.00
+        },
+        "LyftXL": {
+            "base_fare": 3.00,
+            "cost_per_mile": 2.00,
+            "cost_per_minute": 0.35,
+            "booking_fee": 2.50
+        }
     }
-    
-    rates = service_rates.get(service_type, {"base": 2.00, "per_mile": 1.50})
-    surge_multiplier = random.uniform(1.0, 1.3)  # Random surge between 1.0-1.3x
-    return (rates["base"] + distance * rates["per_mile"]) * surge_multiplier
 
-def get_mock_distance(pickup: str, dropoff: str) -> dict:
-    """Get mock distance and duration between two locations."""
-    # Check if we have exact match in our mock data
-    for (loc1, loc2), data in LOCATION_DISTANCES.items():
-        if (pickup == loc1 and dropoff == loc2) or (pickup == loc2 and dropoff == loc1):
-            return data
+    # Get rates for the service type, default to Uber rates if service type not found
+    rates = service_rates.get(service_type, service_rates["Uber"])
     
-    # If no exact match, generate random but reasonable data
-    distance = random.uniform(5.0, 30.0)  # Random distance between 5-30 miles
-    duration = int(distance * 120)  # Rough estimate: 2 minutes per mile
-    return {"distance": distance, "duration": duration}
+    # Calculate fare components
+    base_fare = rates["base_fare"]
+    distance_fare = distance * rates["cost_per_mile"]
+    time_fare = (duration / 60) * rates["cost_per_minute"]  # Convert seconds to minutes
+    booking_fee = rates["booking_fee"]
 
-# Mock data for common locations and their approximate distances
-LOCATION_DISTANCES = {
-    ("New York", "Boston"): {"distance": 215.0, "duration": 14400},  # 4 hours
-    ("New York", "Philadelphia"): {"distance": 97.0, "duration": 7200},  # 2 hours
-    ("Boston", "Philadelphia"): {"distance": 308.0, "duration": 18000},  # 5 hours
-    ("Manhattan", "Brooklyn"): {"distance": 8.0, "duration": 1800},  # 30 mins
-    ("Manhattan", "Queens"): {"distance": 10.0, "duration": 2400},  # 40 mins
-    ("Brooklyn", "Queens"): {"distance": 9.0, "duration": 1800},  # 30 mins
-    ("Guntur", "AP"): {"distance": 15.0, "duration": 1800},  # 30 mins
-    ("Vijayawada", "AP"): {"distance": 15.0, "duration": 1800},  # 30 mins
-}
+    # Calculate total fare
+    total_fare = base_fare + distance_fare + time_fare + booking_fee
+
+    # Apply dynamic pricing (surge) based on time of day and demand
+    hour = datetime.now().hour
+    surge_multiplier = 1.0
+
+    # Peak hours: 7-9 AM and 4-7 PM on weekdays
+    if datetime.now().weekday() < 5:  # Monday-Friday
+        if (7 <= hour <= 9) or (16 <= hour <= 19):
+            surge_multiplier = 1.5
+
+    return round(total_fare * surge_multiplier, 2)

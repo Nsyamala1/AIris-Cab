@@ -32,11 +32,14 @@ interface PriceEstimate {
   service: string;
   price_estimate: string;
   duration: number;
+  duration_in_traffic?: number;
   distance: number;
   pickup: string;
   dropoff: string;
-  app_url: string;
-  web_url: string;
+  urls: {
+    app_url: string;
+    web_url: string;
+  };
   recommended: boolean;
   capacity: string;
 }
@@ -61,14 +64,14 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [pickupOptions, setPickupOptions] = useState<string[]>([]);
   const [dropoffOptions, setDropoffOptions] = useState<string[]>([]);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>(
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' }>(
     { open: false, message: '', severity: 'success' }
   );
   const [phoneNumber, setPhoneNumber] = useState('');
   const [targetPrice, setTargetPrice] = useState<number | ''>('');
   const [trackedRoutes, setTrackedRoutes] = useState<TrackedRoute[]>([]);
   const [showTrackedRoutes, setShowTrackedRoutes] = useState(false);
-  const [errors, setErrors] = useState<{pickup?: string; dropoff?: string}>({});
+  const [errors, setErrors] = useState<{pickup?: string; dropoff?: string; api?: string}>({});
 
   const handleSnackbarClose = () => {
     setSnackbar({ ...snackbar, open: false });
@@ -166,28 +169,50 @@ function App() {
   const comparePrices = async () => {
     setErrors({});
     
-    if (!pickup) {
-      setErrors(prev => ({ ...prev, pickup: 'Please enter a pickup location' }));
-      return;
-    }
-    if (!dropoff) {
-      setErrors(prev => ({ ...prev, dropoff: 'Please enter a dropoff location' }));
-      return;
-    }
     setLoading(true);
+    setEstimates([]);
+    setErrors({});
+
     try {
-      const response = await axios.post('http://localhost:8001/compare-prices', {
+      const response = await axios.post(`${API_URL}/compare-prices`, {
         pickup_address: pickup,
         dropoff_address: dropoff,
         passenger_count: passengerCount
       });
-      setEstimates(response.data);
-    } catch (error) {
-      setSnackbar({
-        open: true,
-        message: 'Failed to fetch price estimates',
-        severity: 'error'
-      });
+
+      if (response.data.error && response.data.error.includes('API key')) {
+        setErrors({ api: 'Google Maps API key is not properly configured. Please contact support.' });
+        return;
+      }
+
+      if (response.data.services) {
+        setEstimates(response.data.services);
+        
+        // Show traffic delay warning if significant
+        const trafficDelay = response.data.duration_in_traffic - response.data.duration;
+        if (trafficDelay > 600) { // If delay is more than 10 minutes
+          setSnackbar({
+            open: true,
+            message: `Heavy traffic alert! Trip may take ${Math.round(trafficDelay / 60)} minutes longer than usual.`,
+            severity: 'warning'
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error comparing prices:', error);
+      if (error.response?.data?.detail) {
+        setSnackbar({
+          open: true,
+          message: error.response.data.detail,
+          severity: 'error'
+        });
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'Failed to compare prices',
+          severity: 'error'
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -347,11 +372,11 @@ function App() {
                       }}
                       onClick={() => {
                         // Try to open the app first
-                        window.location.href = estimate.app_url;
+                        window.location.href = estimate.urls.app_url;
                         
                         // If app doesn't open within 1 second, redirect to web URL
                         setTimeout(() => {
-                          window.location.href = estimate.web_url;
+                          window.location.href = estimate.urls.web_url;
                         }, 1000);
                       }}
                     >
@@ -389,7 +414,14 @@ function App() {
                     <Stack spacing={2}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <ClockIcon color="action" />
-                        <Typography>Duration: {formatDuration(estimate.duration)}</Typography>
+                        <Typography>
+                          Duration: {formatDuration(estimate.duration)}
+                          {estimate.duration_in_traffic && estimate.duration_in_traffic > estimate.duration && (
+                            <span style={{ color: 'orange' }}>
+                              {' '}(with traffic: {formatDuration(estimate.duration_in_traffic)})
+                            </span>
+                          )}
+                        </Typography>
                       </Box>
 
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

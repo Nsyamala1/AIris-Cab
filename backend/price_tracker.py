@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from models import SessionLocal, TrackedRoute, PriceHistory
 import os
 from dotenv import load_dotenv
-from utils import calculate_price, get_mock_distance
+from utils import calculate_price, get_distance_matrix
 from twilio.rest import Client
 
 load_dotenv()

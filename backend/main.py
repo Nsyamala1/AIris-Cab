@@ -6,10 +6,10 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from models import SessionLocal, TrackedRoute, PriceHistory
 from price_tracker import check_price_and_notify
-from utils import calculate_price, get_mock_distance
-import random
+from utils import calculate_price, get_distance_matrix
 from datetime import datetime
 import traceback
+import os
 
 app = FastAPI()
 
@@ -42,24 +42,19 @@ class TrackRouteRequest(BaseModel):
     phone_number: str  # E.164 format (+1XXXXXXXXXX)
     target_price: float
 
-# Mock cities data
+# List of major cities for autocomplete
 CITIES = [
-    "Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island",
-    "Guntur", "Vijayawada", "Hyderabad", "Chennai", "Bangalore",
-    "Mumbai", "Delhi", "Kolkata", "AP", "Telangana"
+    # US Cities
+    "New York", "Los Angeles", "Chicago", "Houston", "Phoenix",
+    "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose",
+    "Austin", "Jacksonville", "Fort Worth", "Columbus", "San Francisco",
+    "Charlotte", "Indianapolis", "Seattle", "Denver", "Boston",
+    # Indian Cities
+    "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai",
+    "Kolkata", "Pune", "Ahmedabad", "Surat", "Jaipur",
+    "Lucknow", "Kanpur", "Nagpur", "Indore", "Thane",
+    "Bhopal", "Visakhapatnam", "Pimpri-Chinchwad", "Patna", "Vadodara"
 ]
-
-# Mock data for common locations and their approximate distances
-LOCATION_DISTANCES = {
-    ("New York", "Boston"): {"distance": 215.0, "duration": 14400},  # 4 hours
-    ("New York", "Philadelphia"): {"distance": 97.0, "duration": 7200},  # 2 hours
-    ("Boston", "Philadelphia"): {"distance": 308.0, "duration": 18000},  # 5 hours
-    ("Manhattan", "Brooklyn"): {"distance": 8.0, "duration": 1800},  # 30 mins
-    ("Manhattan", "Queens"): {"distance": 10.0, "duration": 2400},  # 40 mins
-    ("Brooklyn", "Queens"): {"distance": 9.0, "duration": 1800},  # 30 mins
-    ("Guntur", "AP"): {"distance": 15.0, "duration": 1800},  # 30 mins
-    ("Vijayawada", "AP"): {"distance": 15.0, "duration": 1800},  # 30 mins
-}
 
 def get_service_urls(service: str, pickup: str, dropoff: str) -> dict:
     """Generate both deep linking and web fallback URLs for ride services."""
@@ -87,80 +82,125 @@ def get_service_urls(service: str, pickup: str, dropoff: str) -> dict:
 async def compare_prices(location: LocationRequest, request: Request):
     print(f"Received compare-prices request: {location}")
     try:
-        # Get mock distance and duration
-        route_data = get_mock_distance(location.pickup_address, location.dropoff_address)
+        if not os.getenv('GOOGLE_MAPS_API_KEY'):
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Google Maps API key not configured"}
+            )
+
+        # Get real distance and duration from Google Maps API
+        try:
+            route_data = get_distance_matrix(location.pickup_address, location.dropoff_address)
+        except Exception as e:
+            error_message = str(e)
+            if 'API key' in error_message:
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": f"Google Maps API error: {error_message}"}
+                )
+            raise e
         
         # Get all available services based on passenger count
         available_services = []
         
-        # Always show bike option for 1-2 passengers
-        if location.passenger_count <= 2:
-            available_services.append({
-                "service": "Bike",
-                "price_estimate": calculate_price(route_data['distance'], 'Bike'),
-                "duration": int(route_data['duration'] * 1.5),  # Bikes take longer
-                "distance": route_data['distance'],
-                "pickup": location.pickup_address,
-                "dropoff": location.dropoff_address,
-                "recommended": False,  # Will be updated later
-                "capacity": "1-2 passengers",
-                **get_service_urls("Rapido", location.pickup_address, location.dropoff_address)
-            })
+        # Calculate prices for regular services
+        base_distance = route_data['distance']
+        base_duration = route_data['duration']
         
-        # Always show standard options
-        available_services.extend([
-            {
-                "service": "Uber",
-                "price_estimate": calculate_price(route_data['distance'], 'Uber'),
-                "duration": route_data['duration'],
-                "distance": route_data['distance'],
-                "pickup": location.pickup_address,
-                "dropoff": location.dropoff_address,
-                "recommended": False,  # Will be updated later
-                "capacity": "1-4 passengers",
-                **get_service_urls("Uber", location.pickup_address, location.dropoff_address)
-            },
-            {
-                "service": "Lyft",
-                "price_estimate": calculate_price(route_data['distance'], 'Lyft'),
-                "duration": route_data['duration'],
-                "distance": route_data['distance'],
-                "pickup": location.pickup_address,
-                "dropoff": location.dropoff_address,
-                "recommended": False,  # Will be updated later
-                "capacity": "1-4 passengers",
-                **get_service_urls("Lyft", location.pickup_address, location.dropoff_address)
-            }
-        ])
-        
-        # Always show XL option
-        available_services.append({
-            "service": "UberXL",
-            "price_estimate": calculate_price(route_data['distance'], 'UberXL'),
-            "duration": route_data['duration'],
-            "distance": route_data['distance'],
-            "pickup": location.pickup_address,
-            "dropoff": location.dropoff_address,
-            "recommended": False,  # Will be updated later
-            "capacity": "1-7 passengers",
-            **get_service_urls("Uber", location.pickup_address, location.dropoff_address)
-        })
-        
-        # Find the cheapest service that can accommodate the passenger count
-        valid_services = [service for service in available_services 
-                         if int(service['capacity'].split('-')[1].split()[0]) >= location.passenger_count]
-        
-        if valid_services:
-            cheapest_service = min(valid_services, key=lambda x: x['price_estimate'])
+        # Regular Uber/Lyft for 1-4 passengers
+        if location.passenger_count <= 4:
+            uber_price = calculate_price(base_distance, base_duration // 60, 'Uber')
+            lyft_price = calculate_price(base_distance, base_duration // 60, 'Lyft')
             
-            # Format all price estimates and mark the cheapest as recommended
-            for service in available_services:
-                service['price_estimate'] = f"${service['price_estimate']:.2f}"
-                if service['service'] == cheapest_service['service'] and service in valid_services:
-                    service['recommended'] = True
+            available_services.extend([
+                {
+                    "service": "Uber",
+                    "price_estimate": f"${uber_price:.2f}",
+                    "duration": base_duration,
+                    "duration_in_traffic": route_data.get('duration_in_traffic'),
+                    "distance": base_distance,
+                    "pickup": location.pickup_address,
+                    "dropoff": location.dropoff_address,
+                    "recommended": False,  # Will be updated later
+                    "capacity": "1-4 passengers",
+                    "urls": get_service_urls("Uber", location.pickup_address, location.dropoff_address)
+                },
+                {
+                    "service": "Lyft",
+                    "price_estimate": f"${lyft_price:.2f}",
+                    "duration": base_duration,
+                    "duration_in_traffic": route_data.get('duration_in_traffic'),
+                    "distance": base_distance,
+                    "pickup": location.pickup_address,
+                    "dropoff": location.dropoff_address,
+                    "recommended": False,  # Will be updated later
+                    "capacity": "1-4 passengers",
+                    "urls": get_service_urls("Lyft", location.pickup_address, location.dropoff_address)
+                }
+            ])
+
+        # XL services for 5+ passengers
+        if location.passenger_count >= 5:
+            uberxl_price = calculate_price(base_distance, base_duration // 60, 'UberXL')
+            lyftxl_price = calculate_price(base_distance, base_duration // 60, 'UberXL')
+            
+            available_services.extend([
+                {
+                    "service": "UberXL",
+                    "price_estimate": f"${uberxl_price:.2f}",
+                    "duration": base_duration,
+                    "duration_in_traffic": route_data.get('duration_in_traffic'),
+                    "distance": base_distance,
+                    "pickup": location.pickup_address,
+                    "dropoff": location.dropoff_address,
+                    "recommended": False,  # Will be updated later
+                    "capacity": "1-7 passengers",
+                    "urls": get_service_urls("Uber", location.pickup_address, location.dropoff_address)
+                },
+                {
+                    "service": "LyftXL",
+                    "price_estimate": f"${lyftxl_price:.2f}",
+                    "duration": base_duration,
+                    "duration_in_traffic": route_data.get('duration_in_traffic'),
+                    "distance": base_distance,
+                    "pickup": location.pickup_address,
+                    "dropoff": location.dropoff_address,
+                    "recommended": False,
+                    "capacity": "5-6 passengers",
+                    "urls": get_service_urls("Lyft", location.pickup_address, location.dropoff_address)
+                }
+            ])
         
-        estimates = available_services
-        return estimates
+        # Find the cheapest service and mark it as recommended
+        if available_services:
+            # Convert price strings to floats for comparison
+            for service in available_services:
+                service['price_float'] = float(service['price_estimate'].replace('$', ''))
+            
+            # Filter services that can accommodate the passenger count
+            valid_services = [service for service in available_services 
+                            if int(service['capacity'].split('-')[1].split()[0]) >= location.passenger_count]
+            
+            if valid_services:
+                min_price = min(service['price_float'] for service in valid_services)
+                for service in valid_services:
+                    if service['price_float'] == min_price:
+                        service['recommended'] = True
+                        break
+            
+            # Remove the temporary price_float field
+            for service in available_services:
+                del service['price_float']
+        
+        # Sort services by price
+        available_services.sort(key=lambda x: float(x['price_estimate'].replace('$', '')))
+        
+        return {
+            "services": available_services,
+            "distance": route_data['distance'],
+            "duration": route_data['duration'],
+            "duration_in_traffic": route_data.get('duration_in_traffic', route_data['duration'])
+        }
     except Exception as e:
         print(f"Error in compare-prices: {e}")
         print("Request body:", location)
