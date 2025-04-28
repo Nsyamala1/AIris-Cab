@@ -179,7 +179,7 @@ function App() {
         dropoff_address: dropoff,
         passenger_count: passengerCount
       });
-
+      console.log(API_URL)
       if (response.data.error && response.data.error.includes('API key')) {
         setErrors({ api: 'Google Maps API key is not properly configured. Please contact support.' });
         return;
